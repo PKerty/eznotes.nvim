@@ -8,6 +8,7 @@ local default_opts = {
 local MAX_INT = 2 ^ 53 - 1
 local rand_seed = nil
 local view_bufnr = 0
+-- local log = require("eznotes.log")
 function M.setup(opts)
 	rand_seed = os.time()
 	math.randomseed(rand_seed)
@@ -47,14 +48,32 @@ function M.setup(opts)
 		end
 	end, view_bufnr)
 	local augroup = vim.api.nvim_create_augroup("eznotes", {})
+	vim.api.nvim_create_autocmd("ExitPre", {
+		desc = "Save notes",
+		group = augroup,
+		callback = function()
+			-- save all notes on note_list which are still active buffers with modifications
+			--
+			for _, note in ipairs(note_list) do
+				local bufnr = note.bufnr
+				local file_name = vim.api.nvim_buf_get_name(bufnr)
+
+				-- Avoid saving unnamed buffers
+				if file_name ~= "" and vim.api.nvim_buf_is_loaded(bufnr) then
+					-- Write the buffer to disk
+					-- log.info("--writing buffer to disk", file_name)
+					vim.api.nvim_buf_call(bufnr, function()
+						vim.cmd("silent! write")
+					end)
+				end
+			end
+		end,
+	})
 	vim.api.nvim_create_autocmd("VimLeavePre", {
 		desc = "Clears note list buffer on vim exit",
 		group = augroup,
 		callback = function()
-			vim.notify(
-				string.format("VimLeavePre: curr buf: %d - view buf: %d", vim.api.nvim_get_current_buf(), view_bufnr),
-				vim.log.levels.INFO
-			)
+			-- clear view buffer
 			vim.api.nvim_buf_delete(view_bufnr, { force = true })
 		end,
 	})
@@ -103,12 +122,16 @@ function M.list_notes()
 	for _, note in ipairs(note_list) do
 		table.insert(lines, note.name)
 	end
+
 	if view_bufnr == 0 then
 		vim.notify(string.format("Error creating buffer for view"), vim.log.levels.ERROR)
 		return
 	end
+
+	vim.api.nvim_set_option_value("modifiable", true, { buf = view_bufnr })
 	vim.api.nvim_buf_set_lines(view_bufnr, 0, -1, false, lines)
 	vim.api.nvim_set_option_value("modified", false, { buf = view_bufnr })
+	vim.api.nvim_set_option_value("modifiable", false, { buf = view_bufnr })
 	local width = vim.o.columns
 	local height = vim.o.lines
 	local size_fraction = 0.2
@@ -129,7 +152,6 @@ function M.list_notes()
 		col = col,
 		border = "single",
 	})
-	vim.api.nvim_set_option_value("modifiable", false, { buf = view_bufnr })
 end
 
 vim.api.nvim_command("command! EznotesCreateNote lua require('eznotes').create_note()")
