@@ -46,6 +46,35 @@ function M.setup(opts)
 		if vim.api.nvim_get_current_buf() == view_bufnr and vim.fn.keytrans(char) == "<Esc>" then
 			vim.api.nvim_win_close(0, true)
 		end
+		if vim.api.nvim_get_current_buf() == view_bufnr and vim.fn.keytrans(char) == "<BS>" then
+			local line = vim.api.nvim_get_current_line()
+			for i, note in ipairs(note_list) do
+				if note.name == line then
+					vim.notify(user_opts.load_path .. "/" .. note.name, vim.log.levels.INFO)
+					vim.api.nvim_buf_delete(note.bufnr, { force = true })
+					os.remove(user_opts.load_path .. "/" .. note.name)
+
+					table.remove(note_list, i)
+					local lines = {}
+					for _, n_note in ipairs(note_list) do
+						table.insert(lines, n_note.name)
+					end
+
+					if view_bufnr == 0 then
+						vim.notify(string.format("Error creating buffer for view"), vim.log.levels.ERROR)
+						return
+					end
+
+					vim.api.nvim_set_option_value("modifiable", true, { buf = view_bufnr })
+					vim.api.nvim_buf_set_lines(view_bufnr, 0, -1, false, lines)
+					vim.api.nvim_set_option_value("modified", false, { buf = view_bufnr })
+					vim.api.nvim_set_option_value("modifiable", false, { buf = view_bufnr })
+
+					-- remove note from note_list
+					return
+				end
+			end
+		end
 	end, view_bufnr)
 	local augroup = vim.api.nvim_create_augroup("eznotes", {})
 	vim.api.nvim_create_autocmd("ExitPre", {
@@ -117,6 +146,22 @@ function M.create_note()
 	M.show_note(bufnr)
 end
 
+function M.clean_dir()
+	local files = vim.fn.glob(user_opts.load_path .. "/*", false, true)
+	for _, file in ipairs(files) do
+		vim.fn.delete(file)
+	end
+	for i, note in ipairs(note_list) do
+		vim.api.nvim_buf_delete(note.bufnr, { force = true })
+		table.remove(note_list, i)
+	end
+
+	vim.api.nvim_set_option_value("modifiable", true, { buf = view_bufnr })
+	vim.api.nvim_buf_set_lines(view_bufnr, 0, -1, false, {})
+	vim.api.nvim_set_option_value("modified", false, { buf = view_bufnr })
+	vim.api.nvim_set_option_value("modifiable", false, { buf = view_bufnr })
+end
+
 function M.list_notes()
 	local lines = {}
 	for _, note in ipairs(note_list) do
@@ -156,5 +201,5 @@ end
 
 vim.api.nvim_command("command! EznotesCreateNote lua require('eznotes').create_note()")
 vim.api.nvim_command("command! EznotesListNotes lua require('eznotes').list_notes()")
-
+vim.api.nvim_command("command! EznotesCleanDir lua require('eznotes').clean_dir()")
 return M
